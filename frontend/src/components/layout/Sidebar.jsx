@@ -14,7 +14,7 @@ export default function Sidebar({ onAddWidget }) {
               onClick={() => onAddWidget(type)}
             >
               <Icon size={20} />
-              <span>{config.name}</span>
+              <span className="hidden">{config.name}</span>
             </button>
           );
         })}
