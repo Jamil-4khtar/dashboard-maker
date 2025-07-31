@@ -1,29 +1,22 @@
-import React, { useEffect } from "react";
-import "./App.css";
-import { io } from "socket.io-client";
-import { Routes, Route } from 'react-router-dom'
-import Login from "./pages/Login";
-
-const socket = io();
-console.log(socket);
+import React, { useContext } from 'react'
+import "./styles/App.css"
+import { DashboardContext } from './contexts/allContext'
+import Header from './components/layout/Header'
+import Sidebar from './components/layout/Sidebar'
+import Canvas from './components/dashboard/Canvas'
 
 function App() {
-  useEffect(() => {
-    socket.on("connect", () => {
-      console.log("User Connected to WebSocket Server", socket.id);
-    });
+  const { theme, toggleTheme, addWidget } = useContext(DashboardContext)
 
-    socket.on("disconnect", () => {
-      console.log("Disconnected from WebSocket server");
-    });
-  }, []);
-
-  return <div>
-    <h1 className="text-2xl font-bold">Collaborative Dashboard</h1>
-    <Routes>
-      <Route path="/login" element={<Login/>}/>
-    </Routes>
-  </div>;
+  return (
+    <div className={`app ${theme}`}>
+        <Header theme={theme} toggleTheme={toggleTheme} />
+        <div className="main-content">
+          <Sidebar onAddWidget={addWidget} />
+          <Canvas />
+        </div>
+      </div>
+  )
 }
 
-export default App;
+export default App
