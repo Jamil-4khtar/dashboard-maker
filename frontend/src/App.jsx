@@ -7,6 +7,7 @@ import Canvas from './components/dashboard/Canvas'
 
 function App() {
   const { theme, toggleTheme, addWidget } = useContext(DashboardContext)
+  
 
   return (
     <div className={`app ${theme}`}>

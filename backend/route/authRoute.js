@@ -7,6 +7,7 @@ const authRouter = Router()
 authRouter.post("/register", register)
 authRouter.post("/login", login)
 
+// demo auth
 authRouter.use(passport.authenticate("jwt", { session: false }))
 authRouter.get("/getme", (req, res) => {
   res.send("Got em")

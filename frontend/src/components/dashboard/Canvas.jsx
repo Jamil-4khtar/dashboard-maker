@@ -4,7 +4,7 @@ import WidgetContainer from "./WidgetContainer";
 
 
 export default function Canvas() {
-  const { widgets, addWidget, updateWidget, deleteWidget, selectedWidget, setSelectedWidget } = useContext(DashboardContext)
+  const { widgets, updateWidget, deleteWidget, selectedWidget, setSelectedWidget } = useContext(DashboardContext)
 
   const handleCanvasClick = (e) => {
     if (e.target === e.currentTarget) {
