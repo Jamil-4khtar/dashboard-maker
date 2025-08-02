@@ -1,6 +1,6 @@
 export const dashboardAPI = {
   async getDashboard(id) {
-    const response = await fetch(`${import.meta.env.VITE_SOCKET_URL}/api/dashboard/${id}`);
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/dashboard/${id}`);
     if (!response.ok) {
       throw new Error('Failed to fetch dashboard');
     }
@@ -8,7 +8,7 @@ export const dashboardAPI = {
   },
 
   async saveDashboard(id, data) {
-    const response = await fetch(`${import.meta.env.VITE_SOCKET_URL}/api/dashboard/${id}`, {
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/dashboard/${id}`, {                     
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -22,7 +22,7 @@ export const dashboardAPI = {
   },
 
   async getDashboards() {
-    const response = await fetch(`${import.meta.env.VITE_SOCKET_URL}/api/dashboard/list`);
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/dashboard/list`);
     if (!response.ok) {
       throw new Error('Failed to fetch dashboards');
     }
@@ -30,7 +30,7 @@ export const dashboardAPI = {
   },
 
   async deleteDashboard(id) {
-    const response = await fetch(`${import.meta.env.VITE_SOCKET_URL}/api/dashboard/${id}`, {
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/dashboard/${id}`, {
       method: 'DELETE'
     });
     if (!response.ok) {

@@ -1,16 +1,19 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useContext } from "react";
 import { WIDGET_TYPES } from "../../lib/constants";
 import { Move, X } from "lucide-react";
+import { DashboardContext } from "../../contexts/allContext";
+
 
 export default function WidgetContainer({ widget, onUpdate, onDelete, isSelected, onSelect }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const { emitWidgetUpdate } = useContext(DashboardContext);
   const widgetRef = useRef();
 
   const WidgetComponent = WIDGET_TYPES[widget.type].component;
 
   const handleMouseDown = (e) => {
-    if (e.target.closest('.widget-content')) return; // Don't drag when interacting with content
+    if (e.target.closest('.widget-content')) return;
     setIsDragging(true);
     setDragStart({
       x: e.clientX - widget.position.x,
@@ -24,10 +27,13 @@ export default function WidgetContainer({ widget, onUpdate, onDelete, isSelected
     const newX = Math.max(0, e.clientX - dragStart.x);
     const newY = Math.max(0, e.clientY - dragStart.y);
     
-    onUpdate(widget.id, {
+    const updatedWidget = {
       ...widget,
       position: { ...widget.position, x: newX, y: newY }
-    });
+    };
+    
+    onUpdate(widget.id, updatedWidget);
+    emitWidgetUpdate(updatedWidget, 'update');
   };
 
   const handleMouseUp = () => {
@@ -61,7 +67,10 @@ export default function WidgetContainer({ widget, onUpdate, onDelete, isSelected
         <div className="widget-controls">
           <button 
             className="control-btn delete-btn"
-            onClick={() => onDelete(widget.id)}
+            onClick={() => {
+              onDelete(widget.id);
+              emitWidgetUpdate(widget, 'delete');
+            }}
           >
             <X size={14} />
           </button>
@@ -72,7 +81,11 @@ export default function WidgetContainer({ widget, onUpdate, onDelete, isSelected
       )}
       <WidgetComponent 
         widget={widget}
-        onUpdate={(id, config) => onUpdate(id, { ...widget, config })}
+        onUpdate={(id, config) => {
+          const updatedWidget = { ...widget, config };
+          onUpdate(id, updatedWidget);
+          emitWidgetUpdate(updatedWidget, 'update');
+        }}
         isSelected={isSelected}
         onSelect={onSelect}
       />

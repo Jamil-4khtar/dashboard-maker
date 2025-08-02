@@ -1,4 +1,4 @@
-import Dashboard from "../model/Dashboard";
+import Dashboard from "../model/Dashboard.js";
 
 async function getDashboard(req, res) {
   try {

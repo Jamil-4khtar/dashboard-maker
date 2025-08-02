@@ -1,13 +1,92 @@
-import Session from "./model/Session";
-import Dashboard from "./model/Dashboard";
+import Session from "./model/Session.js";
+import Dashboard from "./model/Dashboard.js";
+
+// In-memory store for active connections
+const activeConnections = new Map();
+const dashboardRooms = new Map();
+
+// Make these variables available globally
+global.activeConnections = activeConnections;
+global.dashboardRooms = dashboardRooms;
+
+// Track connection attempts with timestamps to detect rapid reconnects
+const connectionAttempts = new Map();
+const ipConnections = new Map(); // Track connections by IP
+const CONNECTION_THROTTLE_MS = 60000; // 60 seconds - increased to prevent reconnection loops
+const CONNECTION_CLEANUP_MS = 3600000; // 1 hour
+const MAX_CONNECTIONS_PER_IP = 5; // Maximum connections allowed per IP - increased to be more lenient
+const SOCKET_DEBUG = true; // Enable detailed socket debugging
+
+// Function to clean up old connection attempts
+function cleanupOldConnectionAttempts() {
+  const now = Date.now();
+  console.log(`Cleaning up old connection attempts (current count: ${connectionAttempts.size})`);
+  
+  for (const [socketId, timestamp] of connectionAttempts.entries()) {
+    if (now - timestamp > CONNECTION_CLEANUP_MS) {
+      connectionAttempts.delete(socketId);
+    }
+  }
+  
+  console.log(`Cleanup complete (new count: ${connectionAttempts.size})`);
+}
+
+// Debug logging function that only logs when SOCKET_DEBUG is true
+function debugLog(...args) {
+  if (SOCKET_DEBUG) {
+    console.log(...args);
+  }
+}
 
 export default function socketHandler(io) {
-  // In-memory store for active connections
-  const activeConnections = new Map();
-  const dashboardRooms = new Map();
-
   // Socket.IO Connection Handling
   io.on("connection", (socket) => {
+    const now = Date.now();
+    const lastAttempt = connectionAttempts.get(socket.id);
+    const clientIp = socket.handshake.headers['x-forwarded-for'] || 
+                     socket.handshake.address || 
+                     'unknown';
+    
+    debugLog(`Connection attempt from IP: ${clientIp}, Socket ID: ${socket.id}`);
+    
+    // Track total connections for monitoring
+    const totalConnections = activeConnections.size;
+    const ipSocketCount = ipConnections.has(clientIp) ? ipConnections.get(clientIp).size : 0;
+    
+    debugLog(`Current connections - Total: ${totalConnections}, IP ${clientIp}: ${ipSocketCount}`);
+    
+    // Check if this is a rapid reconnection (potential loop)
+    if (lastAttempt && (now - lastAttempt) < CONNECTION_THROTTLE_MS) {
+      console.log(`Throttling connection for socket ${socket.id} - too frequent reconnects (${Math.round((now - lastAttempt)/1000)}s < ${CONNECTION_THROTTLE_MS/1000}s)`);
+      socket.disconnect();
+      return;
+    }
+    
+    // Check if IP has too many connections
+    if (!ipConnections.has(clientIp)) {
+      ipConnections.set(clientIp, new Set());
+    }
+    
+    const ipSockets = ipConnections.get(clientIp);
+    
+    // If this IP already has max connections, disconnect
+    if (ipSockets.size >= MAX_CONNECTIONS_PER_IP) {
+      console.log(`Too many connections from IP ${clientIp} (${ipSockets.size}/${MAX_CONNECTIONS_PER_IP}). Disconnecting.`);
+      socket.disconnect();
+      return;
+    }
+    
+    // Check if already connected
+    if (activeConnections.has(socket.id)) {
+      debugLog("Socket already connected:", socket.id);
+      return;
+    }
+    
+    // Add this socket to the IP tracking
+    ipSockets.add(socket.id);
+    
+    // Update connection attempt timestamp
+    connectionAttempts.set(socket.id, now);
     console.log("User connected:", socket.id);
 
     // Join dashboard room
@@ -198,8 +277,34 @@ export default function socketHandler(io) {
     });
 
     // Handle disconnect
-    socket.on("disconnect", async () => {
-      console.log("User disconnected:", socket.id);
+    socket.on("disconnect", async (reason) => {
+      console.log(`User disconnected: ${socket.id}, Reason: ${reason}`);
+
+      // Keep the connection attempt timestamp for throttling
+      // but update it to indicate this was a disconnect, not a connect
+      const now = Date.now();
+      connectionAttempts.set(socket.id, now);
+      
+      // Clean up IP connections tracking
+      const clientIp = socket.handshake.headers['x-forwarded-for'] || 
+                       socket.handshake.address || 
+                       'unknown';
+      
+      if (ipConnections.has(clientIp)) {
+        const ipSockets = ipConnections.get(clientIp);
+        ipSockets.delete(socket.id);
+        debugLog(`Removed socket ${socket.id} from IP ${clientIp}, remaining: ${ipSockets.size}`);
+        
+        if (ipSockets.size === 0) {
+          ipConnections.delete(clientIp);
+          debugLog(`Removed IP ${clientIp} from tracking (no more connections)`);
+        }
+      }
+      
+      // Clean up old connection attempts more frequently (10% chance on each disconnect)
+      if (Math.random() < 0.1) {
+        cleanupOldConnectionAttempts();
+      }
 
       const connection = activeConnections.get(socket.id);
       if (connection) {
@@ -209,29 +314,49 @@ export default function socketHandler(io) {
         activeConnections.delete(socket.id);
         if (dashboardRooms.has(dashboardId)) {
           dashboardRooms.get(dashboardId).delete(socket.id);
+          
+          // If room is empty, delete it
+          if (dashboardRooms.get(dashboardId).size === 0) {
+            dashboardRooms.delete(dashboardId);
+          }
         }
 
-        // Remove session
-        await Session.deleteOne({ sessionId: socket.id });
+        try {
+          // Remove session
+          await Session.deleteOne({ sessionId: socket.id });
 
-        // Notify others
-        socket.to(dashboardId).emit("user-left", {
-          userId,
-          userName,
-          socketId: socket.id,
-        });
+          // Notify others
+          socket.to(dashboardId).emit("user-left", {
+            userId,
+            userName,
+            socketId: socket.id,
+          });
+        } catch (error) {
+          console.error("Error handling disconnect:", error);
+        }
       }
     });
   });
 }
 
 
-// cleanup inactive sesstion
+// Cleanup inactive sessions
 setInterval(async () => {
   try {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    await Session.deleteMany({ lastSeen: { $lt: fiveMinutesAgo } });
+    const deletedSessions = await Session.deleteMany({ lastSeen: { $lt: fiveMinutesAgo } });
+    if (deletedSessions.deletedCount > 0) {
+      console.log(`Cleaned up ${deletedSessions.deletedCount} inactive sessions`);
+    }
   } catch (error) {
     console.error("Error cleaning up sessions:", error);
   }
 }, 60000); // Run every minute
+
+// Regularly clean up connection tracking to prevent memory issues
+setInterval(() => {
+  cleanupOldConnectionAttempts();
+  
+  // Log connection stats
+  console.log(`Connection stats: Active=${activeConnections.size}, Tracked IPs=${ipConnections.size}, Tracked attempts=${connectionAttempts.size}`);
+}, 300000); // Run every 5 minutes

@@ -51,11 +51,14 @@ app.use("/api", router);
 
 // health
 app.get('/health', (req, res) => {
+  // Import the variables from socket.js
+  const { activeConnections, dashboardRooms } = global;
+  
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    connections: activeConnections.size,
-    rooms: dashboardRooms.size
+    connections: activeConnections ? activeConnections.size : 0,
+    rooms: dashboardRooms ? dashboardRooms.size : 0
   });
 });
 
